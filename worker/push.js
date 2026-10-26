@@ -1,0 +1,30 @@
+const te=new TextEncoder();
+const bytes=s=>Uint8Array.from(atob(s.replace(/-/g,'+').replace(/_/g,'/')+'='.repeat((4-s.length%4)%4)),c=>c.charCodeAt(0));
+const b64=b=>btoa(String.fromCharCode(...new Uint8Array(b))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/g,'');
+const concat=(...items)=>{const out=new Uint8Array(items.reduce((n,x)=>n+x.length,0));let p=0;for(const item of items){out.set(item,p);p+=item.length}return out};
+const hkdf=async(ikm,salt,info,length)=>{const key=await crypto.subtle.importKey('raw',ikm,'HKDF',false,['deriveBits']);return new Uint8Array(await crypto.subtle.deriveBits({name:'HKDF',hash:'SHA-256',salt,info},key,length*8))};
+const uint16=n=>new Uint8Array([n>>8,n&255]);
+const uint32=n=>new Uint8Array([(n>>>24)&255,(n>>>16)&255,(n>>>8)&255,n&255]);
+export async function sendPush(subscription,env,payload){
+ const endpoint=new URL(subscription.endpoint);
+ if(endpoint.protocol!=='https:')throw Error('HTTPS endpoint required');
+ const privateKey=await crypto.subtle.importKey('jwk',{kty:'EC',crv:'P-256',d:env.VAPID_PRIVATE_KEY,x:b64(bytes(env.VAPID_PUBLIC_KEY).slice(1,33)),y:b64(bytes(env.VAPID_PUBLIC_KEY).slice(33))}, {name:'ECDSA',namedCurve:'P-256'},false,['sign']);
+ const header=b64(te.encode(JSON.stringify({typ:'JWT',alg:'ES256'})));
+ const claim=b64(te.encode(JSON.stringify({aud:endpoint.origin,exp:Math.floor(Date.now()/1000)+3600,sub:env.VAPID_SUBJECT||'mailto:admin@example.com'})));
+ const jwt=header+'.'+claim+'.'+b64(await crypto.subtle.sign({name:'ECDSA',hash:'SHA-256'},privateKey,te.encode(header+'.'+claim)));
+ const ua=bytes(subscription.p256dh),auth=bytes(subscription.auth);
+ const receiver=await crypto.subtle.importKey('raw',ua,{name:'ECDH',namedCurve:'P-256'},false,[]);
+ const sender=await crypto.subtle.generateKey({name:'ECDH',namedCurve:'P-256'},true,['deriveBits']);
+ const senderPub=new Uint8Array(await crypto.subtle.exportKey('raw',sender.publicKey));
+ const shared=new Uint8Array(await crypto.subtle.deriveBits({name:'ECDH',public:receiver},sender.privateKey,256));
+ const ikm=await hkdf(shared,auth,concat(te.encode('WebPush: info'),new Uint8Array([0]),ua,senderPub),32);
+ const salt=crypto.getRandomValues(new Uint8Array(16));
+ const cek=await hkdf(ikm,salt,concat(te.encode('Content-Encoding: aes128gcm'),new Uint8Array([0])),16);
+ const nonce=await hkdf(ikm,salt,concat(te.encode('Content-Encoding: nonce'),new Uint8Array([0])),12);
+ const plain=concat(te.encode(JSON.stringify(payload)),new Uint8Array([2]));
+ const aes=await crypto.subtle.importKey('raw',cek,'AES-GCM',false,['encrypt']);
+ const ciphertext=new Uint8Array(await crypto.subtle.encrypt({name:'AES-GCM',iv:nonce},aes,plain));
+ const record=concat(salt,uint32(4096),new Uint8Array([senderPub.length]),senderPub,ciphertext);
+ const response=await fetch(endpoint.href,{method:'POST',headers:{'content-encoding':'aes128gcm','content-type':'application/octet-stream','ttl':'3600','authorization':'vapid t='+jwt+', k='+env.VAPID_PUBLIC_KEY},body:record});
+ return response.status;
+}

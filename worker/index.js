@@ -7,7 +7,7 @@ const validDate = s => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s) &&
 const compare = (a, b) => { const aa = encoder.encode(a), bb = encoder.encode(b); let mismatch = aa.length ^ bb.length; for (let i = 0; i < Math.max(aa.length, bb.length); i++) mismatch |= (aa[i] || 0) ^ (bb[i] || 0); return mismatch === 0; };
 async function derive(password, salt) {
   const key = await crypto.subtle.importKey('raw', encoder.encode(password), 'PBKDF2', false, ['deriveBits']);
-  return b64(await crypto.subtle.deriveBits({ name: 'PBKDF2', salt: unb64(salt), iterations: 310000, hash: 'SHA-256' }, key, 256));
+  return b64(await crypto.subtle.deriveBits({ name: 'PBKDF2', salt: unb64(salt), iterations: 100000, hash: 'SHA-256' }, key, 256));
 }
 async function mac(secret, payload) {
   const key = await crypto.subtle.importKey('raw', encoder.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
@@ -120,7 +120,7 @@ export default {
         return json({ id }, 201, security);
       }
       return json({ error: 'Not found' }, 404, security);
-    } catch (err) { return json({ error: 'Request failed' }, 400, security); }
+    } catch (err) { console.error('Fit Journey API error', { path, method, type: err?.name || 'Error', message: err?.message || 'Unknown error' }); return json({ error: 'Server request failed. Check Worker logs or contact support.' }, 500, security); }
   },
   async scheduled(event, env, ctx) {
     // Push delivery is intentionally disabled until VAPID, user opt-in,

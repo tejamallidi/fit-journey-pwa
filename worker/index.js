@@ -74,6 +74,20 @@ export default {
         return json({ ok: true }, 200, { ...security, 'set-cookie': cookie('', 0) });
       }
       if (!(await session(request, env))) return json({ error: 'Sign in required' }, 401, security);
+      if (path === '/api/push/config' && method === 'GET') return json({enabled:Boolean(env.VAPID_PUBLIC_KEY && env.VAPID_PRIVATE_KEY),publicKey:env.VAPID_PUBLIC_KEY||null},200,security);
+      if (path === '/api/push/subscriptions' && method === 'POST') {
+        if (!env.VAPID_PUBLIC_KEY || !env.VAPID_PRIVATE_KEY) return json({error:'Push not configured'},503,security);
+        const input=await body(request);
+        const endpoint=input?.endpoint,p256dh=input?.keys?.p256dh,auth=input?.keys?.auth;
+        if(typeof endpoint!=='string'||endpoint.length>2048||!endpoint.startsWith('https://')||typeof p256dh!=='string'||p256dh.length>256||typeof auth!=='string'||auth.length>256)return json({error:'Invalid subscription'},400,security);
+        await env.DB.prepare('INSERT INTO push_subscriptions (id,profile_id,endpoint,p256dh,auth) VALUES (?,?,?,?,?) ON CONFLICT(endpoint) DO UPDATE SET p256dh=excluded.p256dh,auth=excluded.auth').bind(crypto.randomUUID(),'owner',endpoint,p256dh,auth).run();
+        return json({ok:true},201,security);
+      }
+      if (path === '/api/push/subscriptions' && method === 'DELETE') {
+        const input=await body(request);if(typeof input?.endpoint!=='string')return json({error:'Invalid endpoint'},400,security);
+        await env.DB.prepare('DELETE FROM push_subscriptions WHERE profile_id=? AND endpoint=?').bind('owner',input.endpoint).run();
+        return json({ok:true},200,security);
+      }
       if (path === '/api/snapshot' && method === 'GET') {
         const record = await env.DB.prepare('SELECT data_json, updated_at FROM snapshots WHERE profile_id=?').bind('owner').first();
         return json({ data: record ? JSON.parse(record.data_json) : null, updatedAt: record?.updated_at || null }, 200, security);

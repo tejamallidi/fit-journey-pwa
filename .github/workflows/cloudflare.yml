@@ -36,6 +36,9 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           SESSION_SECRET: ${{ secrets.SESSION_SECRET }}
           SETUP_TOKEN: ${{ secrets.SETUP_TOKEN }}
+          VAPID_PUBLIC_KEY: ${{ secrets.VAPID_PUBLIC_KEY }}
+          VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
+          VAPID_SUBJECT: ${{ secrets.VAPID_SUBJECT }}
         run: |
           for key in CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID SESSION_SECRET SETUP_TOKEN; do
             if [ -z "${!key}" ]; then echo "::error::Missing required secret: $key"; exit 1; fi
@@ -60,6 +63,6 @@ jobs:
           umask 077
           tmpfile="$(mktemp)"
           trap 'rm -f "$tmpfile"' EXIT
-          node -e 'require("fs").writeFileSync(process.argv[1], JSON.stringify({SESSION_SECRET:process.env.SESSION_SECRET,SETUP_TOKEN:process.env.SETUP_TOKEN}))' "$tmpfile"
+          node -e 'require("fs").writeFileSync(process.argv[1], JSON.stringify({SESSION_SECRET:process.env.SESSION_SECRET,SETUP_TOKEN:process.env.SETUP_TOKEN,...(process.env.VAPID_PUBLIC_KEY&&process.env.VAPID_PRIVATE_KEY?{VAPID_PUBLIC_KEY:process.env.VAPID_PUBLIC_KEY,VAPID_PRIVATE_KEY:process.env.VAPID_PRIVATE_KEY,VAPID_SUBJECT:process.env.VAPID_SUBJECT||"mailto:fitjourney@example.com"}:{})}))' "$tmpfile"
           npx --yes wrangler@4 secret bulk "$tmpfile" --config wrangler.jsonc
 

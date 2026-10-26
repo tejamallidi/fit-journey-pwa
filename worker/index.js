@@ -23,9 +23,9 @@ async function session(req, env) {
   try { const obj = JSON.parse(new TextDecoder().decode(unb64(payload))); return obj.sub === 'owner' && Number.isSafeInteger(obj.exp) && obj.exp > Date.now() && obj.v === (await sessionVersion(env)); } catch { return false; }
 }
 async function body(req) {
-  if (Number(req.headers.get('content-length') || 0) > 12000) throw Error('Payload too large');
+  if (Number(req.headers.get('content-length') || 0) > 100000) throw Error('Payload too large');
   const text = await req.text();
-  if (text.length > 12000) throw Error('Payload too large');
+  if (text.length > 100000) throw Error('Payload too large');
   return JSON.parse(text);
 }
 async function sessionVersion(env) {
@@ -83,7 +83,7 @@ export default {
         const data = input?.data;
         if (!data || typeof data !== 'object' || Array.isArray(data) || !Array.isArray(data.weights) || !Array.isArray(data.waists) || !data.days || typeof data.days !== 'object' || Array.isArray(data.days) || !Number.isFinite(data.start) || !Number.isFinite(data.goal)) return json({ error: 'Invalid backup format' }, 400, security);
         const serialized = JSON.stringify(data);
-        if (serialized.length > 10000) return json({ error: 'Backup exceeds 10 KB limit' }, 413, security);
+        if (serialized.length > 90000) return json({ error: 'Backup exceeds 90 KB limit' }, 413, security);
         await env.DB.prepare('INSERT INTO snapshots (profile_id, data_json) VALUES (?, ?) ON CONFLICT(profile_id) DO UPDATE SET data_json=excluded.data_json, updated_at=CURRENT_TIMESTAMP').bind('owner', serialized).run();
         return json({ ok: true }, 200, security);
       }

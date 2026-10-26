@@ -208,14 +208,16 @@ export default {
     const clock=parts.hour+':'+parts.minute;
     const type=clock==='07:30'?'morning':clock==='19:00'?'evening':null;
     if(!type)return;
-    const snapshot=await env.DB.prepare('SELECT data_json FROM snapshots WHERE profile_id=?').bind('owner').first();
+    const profiles=await env.DB.prepare('SELECT DISTINCT profile_id FROM push_subscriptions').all();
+    for(const profileId of profiles.results.map(r=>r.profile_id)){
+    const snapshot=await env.DB.prepare('SELECT data_json FROM snapshots WHERE profile_id=?').bind(profileId).first();
     let day={};
     try{day=JSON.parse(snapshot?.data_json||'{}').days?.[date]||{}}catch{}
-    if(type==='evening'&&day.habits?.walk)return;
-    const subscriptions=await env.DB.prepare('SELECT id,endpoint,p256dh,auth FROM push_subscriptions WHERE profile_id=?').bind('owner').all();
-    if(!subscriptions.results?.length)return;
-    const prior=await env.DB.prepare('SELECT 1 FROM notification_deliveries WHERE profile_id=? AND log_date=? AND reminder_type=?').bind('owner',date,type).first();
-    if(prior)return;
+    if(type==='evening'&&day.habits?.walk)continue;
+    const subscriptions=await env.DB.prepare('SELECT id,endpoint,p256dh,auth FROM push_subscriptions WHERE profile_id=?').bind(profileId).all();
+    if(!subscriptions.results?.length)continue;
+    const prior=await env.DB.prepare('SELECT 1 FROM notification_deliveries WHERE profile_id=? AND log_date=? AND reminder_type=?').bind(profileId,date,type).first();
+    if(prior)continue;
     const message=type==='morning'?{title:'Good morning! Time to walk 🚶',body:'A comfortable walk is a great start to your day.',tag:'walk-'+date+'-morning'}:{title:'Your evening walking check-in 🚶',body:'Your walk is still incomplete. Even a short walk counts!',tag:'walk-'+date+'-evening'};
     let delivered=false;
     for(const sub of subscriptions.results){
@@ -226,6 +228,7 @@ export default {
         if(status>=400&&status!==404&&status!==410)console.error('Push service rejected request',{status});
       }catch(e){console.error('Push delivery failed',e?.message)}
     }
-    if(delivered)await env.DB.prepare('INSERT OR IGNORE INTO notification_deliveries (profile_id,log_date,reminder_type) VALUES (?,?,?)').bind('owner',date,type).run();
+    if(delivered)await env.DB.prepare('INSERT OR IGNORE INTO notification_deliveries (profile_id,log_date,reminder_type) VALUES (?,?,?)').bind(profileId,date,type).run();
+    }
   }
 };

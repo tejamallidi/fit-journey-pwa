@@ -144,7 +144,7 @@ export default {
         const input=await body(request);
         const endpoint=input?.endpoint,p256dh=input?.keys?.p256dh,auth=input?.keys?.auth;
         if(typeof endpoint!=='string'||endpoint.length>2048||!endpoint.startsWith('https://')||typeof p256dh!=='string'||p256dh.length>256||typeof auth!=='string'||auth.length>256)return json({error:'Invalid subscription'},400,security);
-        await env.DB.prepare('INSERT INTO push_subscriptions (id,profile_id,endpoint,p256dh,auth) VALUES (?,?,?,?,?) ON CONFLICT(endpoint) DO UPDATE SET p256dh=excluded.p256dh,auth=excluded.auth').bind(crypto.randomUUID(),profileId,endpoint,p256dh,auth).run();
+        await env.DB.prepare('INSERT INTO push_subscriptions (id,profile_id,endpoint,p256dh,auth) VALUES (?,?,?,?,?) ON CONFLICT(endpoint) DO UPDATE SET profile_id=excluded.profile_id,p256dh=excluded.p256dh,auth=excluded.auth').bind(crypto.randomUUID(),profileId,endpoint,p256dh,auth).run();
         return json({ok:true},201,security);
       }
       if (path === '/api/push/subscriptions' && method === 'DELETE') {

@@ -19,3 +19,18 @@ The workflow validates on every push and pull request. **Deployment is OFF by de
 ## Important
 
 The existing GitHub Pages PWA remains operational until Cloudflare cutover. The Worker backend is still under development. Do not enter sensitive health data into the cloud version until security and backup verification are complete.
+
+## Database migration 002
+
+Before testing cloud login or backup, run `db/migration_002.sql` in the **personal Cloudflare D1 database console**. It adds login-attempt throttling, session revocation, and private snapshot backup tables. The SQL is idempotent.
+
+## Authentication secrets
+
+Set independent encrypted Worker secrets `SESSION_SECRET` and `SETUP_TOKEN` (each at least 32 random characters) in the **personal Cloudflare Worker**, not in GitHub source. After initial setup, delete `SETUP_TOKEN`. These are distinct from the GitHub Actions Cloudflare API token.
+
+## Current boundaries
+
+- Password UI is only visible when the Cloudflare Worker API is reachable. GitHub Pages continues operating locally.
+- Cloud backups are **manual** and overwrite the previous snapshot; no background sync, merge, or cross-device conflict resolution yet.
+- Password login uses a single-owner account and a database-backed lockout after repeated failures.
+- Web Push, email recovery, and production readiness/security validation are not complete. Deployment stays gated.

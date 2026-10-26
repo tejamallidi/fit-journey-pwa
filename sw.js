@@ -1,5 +1,5 @@
-const CACHE='fitjourney-v3';
-const ASSETS=['./','./index.html','./app.js','./cloud.js','./manifest.webmanifest','./icon.svg'];
+const CACHE='fitjourney-v4';
+const ASSETS=['./','./index.html','./app.js','./cloud.js','./notifications.js','./manifest.webmanifest','./icon.svg'];
 self.addEventListener('install',event=>event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(ASSETS)).then(()=>self.skipWaiting())));
 self.addEventListener('activate',event=>event.waitUntil(Promise.all([caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k)))),self.clients.claim()])));
 self.addEventListener('fetch',event=>{
@@ -10,3 +10,6 @@ self.addEventListener('fetch',event=>{
     return response;
   }).catch(()=>caches.match(req)));
 });
+
+self.addEventListener('push', event => { let data = {}; try { data = event.data.json(); } catch {} event.waitUntil(self.registration.showNotification(data.title || 'Fit Journey', {body: data.body || 'Time for your walk', tag: data.tag || 'daily-walk'})); });
+self.addEventListener('notificationclick', event => {event.notification.close();event.waitUntil(self.clients.openWindow('./'));});

@@ -61,5 +61,53 @@
       location.reload();
     } catch (e) { message(e.message); }
   };
+
+  // Automatic cloud synchronization. Initial sync merges records, preserving entries
+  // from both devices. Sync while the PWA is open; offline changes wait for connectivity.
+  let busy=false, pending=false, synced=false, lastCloud=null, debounce;
+  const syncLabel=()=>document.getElementById('syncStatus');
+  const syncMessage=t=>{if(syncLabel())syncLabel().textContent=t};
+  const merge=(remote,local)=>{
+    const byDate=(a,b)=>[...new Map([...(a||[]),...(b||[])].map(v=>[v.date,v])).values()];
+    const days={...(remote.days||{})};
+    for(const [date,d] of Object.entries(local.days||{})){
+      const old=days[date]||{};
+      days[date]={...old,...d,habits:{...(old.habits||{}),...(d.habits||{})},meals:[...new Set([...(old.meals||[]),...(d.meals||[])])]};
+    }
+    return {...remote,...local,weights:byDate(remote.weights,local.weights),waists:byDate(remote.waists,local.waists),days};
+  };
+  window.addEventListener('fitjourney:changed',()=>{
+    if(!state.signedIn)return;
+    pending=true;syncMessage('Saving changes…');
+    clearTimeout(debounce);debounce=setTimeout(syncNow,2000);
+  });
+  async function syncNow(){
+    if(busy||!state.signedIn||!navigator.onLine)return;
+    busy=true;
+    try{
+      const remote=await api('snapshot');
+      if(!synced){
+        synced=true;
+        const local=window.fitJourney?.getData();
+        if(remote.data&&local){
+          window.fitJourney.setData(merge(remote.data,local));
+          pending=true;
+        }else if(remote.data){window.fitJourney?.setData(remote.data)}
+        else if(local)pending=true;
+      }else if(!pending&&remote.data&&remote.updatedAt!==lastCloud){
+        window.fitJourney?.setData(remote.data);
+      }
+      if(pending){
+        const local=window.fitJourney?.getData();
+        if(local){await api('snapshot','PUT',{data:local});pending=false;syncMessage('Cloud sync complete ✓');lastCloud=null}
+      }else{lastCloud=remote.updatedAt;syncMessage('Cloud up to date ✓')}
+    }catch(e){syncMessage('Sync waiting: '+e.message)}
+    finally{busy=false}
+  }
+  const oldRefresh=refresh;
+  refresh=async()=>{await oldRefresh();if(state.signedIn){synced=false;await syncNow()}else{synced=false;pending=false}};
+  setInterval(syncNow,45000);
+  window.addEventListener('online',syncNow);
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden)syncNow()});
   refresh();
 })();

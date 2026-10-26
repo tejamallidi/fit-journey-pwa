@@ -20,13 +20,17 @@ async function session(req, env) {
   if (!token) return false;
   const [payload, signature] = token.split('.');
   if (!payload || !signature || !compare(await mac(env.SESSION_SECRET, payload), signature)) return false;
-  try { const obj = JSON.parse(new TextDecoder().decode(unb64(payload))); return obj.sub === 'owner' && Number.isSafeInteger(obj.exp) && obj.exp > Date.now(); } catch { return false; }
+  try { const obj = JSON.parse(new TextDecoder().decode(unb64(payload))); return obj.sub === 'owner' && Number.isSafeInteger(obj.exp) && obj.exp > Date.now() && obj.v === (await sessionVersion(env)); } catch { return false; }
 }
 async function body(req) {
   if (Number(req.headers.get('content-length') || 0) > 12000) throw Error('Payload too large');
   const text = await req.text();
   if (text.length > 12000) throw Error('Payload too large');
   return JSON.parse(text);
+}
+async function sessionVersion(env) {
+  const row = await env.DB.prepare('SELECT version FROM auth_session_versions WHERE profile_id=?').bind('owner').first();
+  return row?.version ?? 1;
 }
 async function account(env) { return env.DB.prepare('SELECT salt, password_hash FROM auth_users WHERE id = ?').bind('owner').first(); }
 const security = { 'x-content-type-options': 'nosniff', 'referrer-policy': 'no-referrer', 'content-security-policy': "default-src 'none'; frame-ancestors 'none'" };
@@ -49,16 +53,40 @@ export default {
         return json({ created: inserted.meta.changes === 1 }, inserted.meta.changes === 1 ? 201 : 409, security);
       }
       if (path === '/api/auth/login' && method === 'POST') {
+        const attempt = await env.DB.prepare('SELECT failed_count, blocked_until FROM auth_attempts WHERE id=?').bind('owner').first();
+        if (attempt && attempt.blocked_until > Date.now()) return json({ error: 'Too many attempts. Try again later.' }, 429, { ...security, 'retry-after': String(Math.ceil((attempt.blocked_until - Date.now()) / 1000)) });
         if (!env.SESSION_SECRET || env.SESSION_SECRET.length < 32) return json({ error: 'Server secret missing' }, 503, security);
         const input = await body(request), user = await account(env);
         if (typeof input?.password !== 'string' || input.password.length > 128) return json({ error: 'Invalid credentials' }, 401, security);
         const salt = user?.salt || random(), hash = await derive(input.password, salt);
-        if (!user || !compare(hash, user.password_hash)) return json({ error: 'Invalid credentials' }, 401, security);
-        const payload = b64(encoder.encode(JSON.stringify({ sub: 'owner', exp: Date.now() + 30 * 86400000 })));
+        if (!user || !compare(hash, user.password_hash)) {
+          const failed = (attempt?.failed_count ?? 0) + 1;
+          const blocked = failed >= 5 ? Date.now() + 15 * 60000 : 0;
+          await env.DB.prepare('INSERT INTO auth_attempts (id, failed_count, blocked_until) VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET failed_count=excluded.failed_count, blocked_until=excluded.blocked_until').bind('owner', failed >= 5 ? 0 : failed, blocked).run();
+          return json({ error: 'Invalid credentials' }, 401, security);
+        }
+        await env.DB.prepare('DELETE FROM auth_attempts WHERE id=?').bind('owner').run();
+        const payload = b64(encoder.encode(JSON.stringify({ sub: 'owner', v: await sessionVersion(env), exp: Date.now() + 30 * 86400000 })));
         return json({ ok: true }, 200, { ...security, 'set-cookie': cookie(payload + '.' + await mac(env.SESSION_SECRET, payload), 30 * 86400) });
       }
-      if (path === '/api/auth/logout' && method === 'POST') return json({ ok: true }, 200, { ...security, 'set-cookie': cookie('', 0) });
+      if (path === '/api/auth/logout' && method === 'POST') {
+        if (await session(request, env)) await env.DB.prepare('INSERT INTO auth_session_versions (profile_id, version) VALUES (?, 2) ON CONFLICT(profile_id) DO UPDATE SET version=version+1').bind('owner').run();
+        return json({ ok: true }, 200, { ...security, 'set-cookie': cookie('', 0) });
+      }
       if (!(await session(request, env))) return json({ error: 'Sign in required' }, 401, security);
+      if (path === '/api/snapshot' && method === 'GET') {
+        const record = await env.DB.prepare('SELECT data_json, updated_at FROM snapshots WHERE profile_id=?').bind('owner').first();
+        return json({ data: record ? JSON.parse(record.data_json) : null, updatedAt: record?.updated_at || null }, 200, security);
+      }
+      if (path === '/api/snapshot' && method === 'PUT') {
+        const input = await body(request);
+        const data = input?.data;
+        if (!data || typeof data !== 'object' || Array.isArray(data) || !Array.isArray(data.weights) || !Array.isArray(data.waists) || !data.days || typeof data.days !== 'object' || Array.isArray(data.days) || !Number.isFinite(data.start) || !Number.isFinite(data.goal)) return json({ error: 'Invalid backup format' }, 400, security);
+        const serialized = JSON.stringify(data);
+        if (serialized.length > 10000) return json({ error: 'Backup exceeds 10 KB limit' }, 413, security);
+        await env.DB.prepare('INSERT INTO snapshots (profile_id, data_json) VALUES (?, ?) ON CONFLICT(profile_id) DO UPDATE SET data_json=excluded.data_json, updated_at=CURRENT_TIMESTAMP').bind('owner', serialized).run();
+        return json({ ok: true }, 200, security);
+      }
       if (path === '/api/logs' && method === 'GET') {
         const rows = await env.DB.prepare('SELECT log_date, walk_minutes, walk_completed, chai_count, notes FROM daily_logs WHERE profile_id = ? ORDER BY log_date DESC LIMIT 90').bind('owner').all();
         return json({ logs: rows.results }, 200, security);

@@ -3,7 +3,7 @@
   "main": "worker/index.js",
   "compatibility_date": "2026-10-01",
   "assets": { "directory": "./public", "binding": "ASSETS", "run_worker_first": ["/api/*"] },
-  "d1_databases": [{ "binding": "DB", "database_name": "fit-journey-db", "database_id": "REPLACE_WITH_D1_DATABASE_ID" }],
+  "d1_databases": [{ "binding": "DB", "database_name": "fit-journey-db", "database_id": "22cbb211-0388-4832-a25e-6fae31a46f85" }],
   "triggers": { "crons": ["30 14,15 * * *", "0 2,3 * * *"] },
   "vars": { "TIMEZONE": "America/Los_Angeles" }
 }

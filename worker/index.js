@@ -1,3 +1,4 @@
+import { sendPush } from './push.js';
 const encoder = new TextEncoder();
 const json = (data, status = 200, headers = {}) => new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', ...headers } });
 const b64 = bytes => btoa(String.fromCharCode(...new Uint8Array(bytes))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
@@ -137,7 +138,31 @@ export default {
     } catch (err) { console.error('Fit Journey API error', { path, method, type: err?.name || 'Error', message: err?.message || 'Unknown error' }); return json({ error: 'Server request failed. Check Worker logs or contact support.' }, 500, security); }
   },
   async scheduled(event, env, ctx) {
-    // Push delivery is intentionally disabled until VAPID, user opt-in,
-    // Pacific timezone scheduling and deduplication are implemented.
+    if(!env.DB||!env.VAPID_PUBLIC_KEY||!env.VAPID_PRIVATE_KEY)return;
+    const now=new Date(event.scheduledTime||Date.now());
+    const parts=Object.fromEntries(new Intl.DateTimeFormat('en-US',{timeZone:'America/Los_Angeles',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(now).filter(p=>p.type!=='literal').map(p=>[p.type,p.value]));
+    const date=parts.year+'-'+parts.month+'-'+parts.day;
+    const clock=parts.hour+':'+parts.minute;
+    const type=clock==='07:30'?'morning':clock==='19:00'?'evening':null;
+    if(!type)return;
+    const snapshot=await env.DB.prepare('SELECT data_json FROM snapshots WHERE profile_id=?').bind('owner').first();
+    let day={};
+    try{day=JSON.parse(snapshot?.data_json||'{}').days?.[date]||{}}catch{}
+    if(type==='evening'&&day.habits?.walk)return;
+    const subscriptions=await env.DB.prepare('SELECT id,endpoint,p256dh,auth FROM push_subscriptions WHERE profile_id=?').bind('owner').all();
+    if(!subscriptions.results?.length)return;
+    const prior=await env.DB.prepare('SELECT 1 FROM notification_deliveries WHERE profile_id=? AND log_date=? AND reminder_type=?').bind('owner',date,type).first();
+    if(prior)return;
+    const message=type==='morning'?{title:'Good morning! Time to walk 🚶',body:'A comfortable walk is a great start to your day.',tag:'walk-'+date+'-morning'}:{title:'Your evening walking check-in 🚶',body:'Your walk is still incomplete. Even a short walk counts!',tag:'walk-'+date+'-evening'};
+    let delivered=false;
+    for(const sub of subscriptions.results){
+      try{
+        const status=await sendPush(sub,env,message);
+        if(status>=200&&status<300)delivered=true;
+        if(status===404||status===410)await env.DB.prepare('DELETE FROM push_subscriptions WHERE id=?').bind(sub.id).run();
+        if(status>=400&&status!==404&&status!==410)console.error('Push service rejected request',{status});
+      }catch(e){console.error('Push delivery failed',e?.message)}
+    }
+    if(delivered)await env.DB.prepare('INSERT OR IGNORE INTO notification_deliveries (profile_id,log_date,reminder_type) VALUES (?,?,?)').bind('owner',date,type).run();
   }
 };

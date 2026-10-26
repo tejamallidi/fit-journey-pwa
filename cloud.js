@@ -15,15 +15,15 @@
       state.available = true;
       state.signedIn = Boolean(s.authenticated);
       state.initialized = Boolean(s.initialized);
-      if(state.signedIn && s.profileId && sessionStorage.getItem('fitjourney.activeProfile')!==s.profileId){
-        const previous=sessionStorage.getItem('fitjourney.activeProfile');
-        if(previous){localStorage.setItem('fitjourney.profile.'+previous,localStorage.getItem('fitjourney.v1')||'');}
-        if(s.profileId!=='owner'||localStorage.getItem('fitjourney.profile.owner')){
+      if(state.signedIn && s.profileId && localStorage.getItem('fitjourney.activeProfile')!==s.profileId){
+        const previous=localStorage.getItem('fitjourney.activeProfile');
+        if(previous){localStorage.setItem('fitjourney.profile.'+previous,localStorage.getItem('fitjourney.v1')||'');}else{localStorage.setItem('fitjourney.profile.owner',localStorage.getItem('fitjourney.v1')||'');}
+        if(true){
           const own=localStorage.getItem('fitjourney.profile.'+s.profileId);
           localStorage.setItem('fitjourney.v1',own||JSON.stringify({start:88,goal:70,weights:[],waists:[],days:{}}));
-          sessionStorage.setItem('fitjourney.activeProfile',s.profileId);location.reload();return;
+          localStorage.setItem('fitjourney.activeProfile',s.profileId);location.reload();return;
         }
-        sessionStorage.setItem('fitjourney.activeProfile',s.profileId);
+        localStorage.setItem('fitjourney.activeProfile',s.profileId);
       }
       window.dispatchEvent(new Event('fitjourney:auth'));
       $('cloudPanel').hidden = false;
@@ -52,7 +52,7 @@
     } catch (e) { message(e.message); }
   };
   $('cloudSignOut').onclick = async () => {
-    try { const profile=sessionStorage.getItem('fitjourney.activeProfile');if(profile){localStorage.setItem('fitjourney.profile.'+profile,localStorage.getItem('fitjourney.v1')||'');} await api('auth/logout', 'POST');sessionStorage.removeItem('fitjourney.activeProfile');localStorage.setItem('fitjourney.v1',JSON.stringify({start:88,goal:70,weights:[],waists:[],days:{}}));location.reload(); } catch (e) { message(e.message); }
+    try { const profile=localStorage.getItem('fitjourney.activeProfile');if(profile){localStorage.setItem('fitjourney.profile.'+profile,localStorage.getItem('fitjourney.v1')||'');} await api('auth/logout', 'POST');localStorage.removeItem('fitjourney.activeProfile');localStorage.setItem('fitjourney.v1',JSON.stringify({start:88,goal:70,weights:[],waists:[],days:{}}));location.reload(); } catch (e) { message(e.message); }
   };
   $('cloudUpload').onclick = async () => {
     if (!confirm('Upload this device’s local Fit Journey backup? This replaces the previous cloud backup.')) return;

@@ -47,7 +47,7 @@ export default {
     if (path === '/api/health' && method === 'GET') return json({ ok: true, app: 'fit-journey' }, 200, security);
     if (method !== 'GET' && request.headers.get('origin') !== url.origin) return json({ error: 'Invalid origin' }, 403, security);
     try {
-      if (path === '/api/auth/status' && method === 'GET') { const profileId=await session(request,env); return json({initialized:Boolean(await account(env)),authenticated:Boolean(profileId),profileId},200,security); }
+      if (path === '/api/auth/status' && method === 'GET') { const profileId=await session(request,env); return json({initialized:Boolean(await account(env)),authenticated:Boolean(profileId),...(profileId?{profileId}:{})},200,security); }
       if (path === '/api/auth/register' && method === 'POST') {
         const input=await body(request);
         if(!emailValid(input?.email)||!displayValid(input?.name)||typeof input.password!=='string'||input.password.length<12||input.password.length>128)return json({error:'Valid email, name and password of 12–128 characters required'},400,security);

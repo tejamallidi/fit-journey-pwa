@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "test": "node --test",
-    "check": "node --check worker/index.js && node --check app.js",
+    "check": "node --check worker/index.js && node --check app.js && node --check cloud.js && node --check sw.js",
     "build": "node scripts/build.mjs",
     "validate": "npm run check && npm test && npm run build"
   }

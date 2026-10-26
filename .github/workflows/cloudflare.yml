@@ -48,6 +48,11 @@ jobs:
             exit 1
           fi
           if [ "$SESSION_SECRET" = "$SETUP_TOKEN" ]; then echo "::error::Secrets must be different"; exit 1; fi
+      - name: Apply family database migration
+        run: npx --yes wrangler@4 d1 execute fit-journey-db --remote --file=db/migration_003_family.sql
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       - name: Deploy Cloudflare Worker and static assets
         run: npx --yes wrangler@4 deploy
         env:

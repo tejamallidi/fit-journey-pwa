@@ -18,7 +18,7 @@
       if(state.signedIn && s.profileId && sessionStorage.getItem('fitjourney.activeProfile')!==s.profileId){
         const previous=sessionStorage.getItem('fitjourney.activeProfile');
         if(previous){localStorage.setItem('fitjourney.profile.'+previous,localStorage.getItem('fitjourney.v1')||'');}
-        if(s.profileId!=='owner'){
+        if(s.profileId!=='owner'||localStorage.getItem('fitjourney.profile.owner')){
           const own=localStorage.getItem('fitjourney.profile.'+s.profileId);
           localStorage.setItem('fitjourney.v1',own||JSON.stringify({start:88,goal:70,weights:[],waists:[],days:{}}));
           sessionStorage.setItem('fitjourney.activeProfile',s.profileId);location.reload();return;

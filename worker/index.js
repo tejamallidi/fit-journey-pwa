@@ -99,7 +99,7 @@ export default {
       const profileId=await session(request,env);
       if(!profileId)return json({error:'Sign in required'},401,security);
       if(path==='/api/groups' && method==='GET'){
-        const groups=await env.DB.prepare('SELECT g.id,g.name FROM family_groups g JOIN family_memberships m ON m.group_id=g.id WHERE m.profile_id=? ORDER BY g.created_at DESC').bind(profileId).all();
+        const groups=await env.DB.prepare('SELECT g.id,g.name,g.created_by FROM family_groups g JOIN family_memberships m ON m.group_id=g.id WHERE m.profile_id=? ORDER BY g.created_at DESC').bind(profileId).all();
         return json({groups:groups.results},200,security);
       }
       if(path==='/api/groups' && method==='POST'){
@@ -111,6 +111,44 @@ export default {
           env.DB.prepare('INSERT INTO family_memberships (group_id,profile_id) VALUES (?,?)').bind(id,profileId)
         ]);
         return json({id,inviteCode:code},201,security);
+      }
+      if(path==='/api/groups/manage' && method==='PATCH'){
+        const input=await body(request);
+        const group=await env.DB.prepare('SELECT created_by FROM family_groups WHERE id=?').bind(input?.groupId).first();
+        if(!group)return json({error:'Group not found'},404,security);
+        if(group.created_by!==profileId)return json({error:'Only the group creator can edit'},403,security);
+        if(!displayValid(input?.name))return json({error:'Invalid group name'},400,security);
+        await env.DB.prepare('UPDATE family_groups SET name=? WHERE id=?').bind(input.name.trim(),input.groupId).run();
+        return json({ok:true},200,security);
+      }
+      if(path==='/api/groups/manage' && method==='DELETE'){
+        const input=await body(request);
+        const group=await env.DB.prepare('SELECT created_by FROM family_groups WHERE id=?').bind(input?.groupId).first();
+        if(!group)return json({error:'Group not found'},404,security);
+        if(group.created_by!==profileId)return json({error:'Only the group creator can delete'},403,security);
+        await env.DB.batch([
+          env.DB.prepare('DELETE FROM family_memberships WHERE group_id=?').bind(input.groupId),
+          env.DB.prepare('DELETE FROM family_groups WHERE id=?').bind(input.groupId)
+        ]);
+        return json({ok:true},200,security);
+      }
+      if(path==='/api/groups/members' && method==='GET'){
+        const groupId=url.searchParams.get('groupId');
+        const group=await env.DB.prepare('SELECT created_by FROM family_groups WHERE id=?').bind(groupId).first();
+        if(!group)return json({error:'Group not found'},404,security);
+        const member=await env.DB.prepare('SELECT 1 FROM family_memberships WHERE group_id=? AND profile_id=?').bind(groupId,profileId).first();
+        if(!member)return json({error:'Not a group member'},403,security);
+        const rows=await env.DB.prepare("SELECT m.profile_id,COALESCE(a.display_name,'Owner') AS name FROM family_memberships m LEFT JOIN family_accounts a ON a.id=m.profile_id WHERE m.group_id=?").bind(groupId).all();
+        return json({members:rows.results,creatorId:group.created_by},200,security);
+      }
+      if(path==='/api/groups/members' && method==='DELETE'){
+        const input=await body(request);
+        const group=await env.DB.prepare('SELECT created_by FROM family_groups WHERE id=?').bind(input?.groupId).first();
+        if(!group)return json({error:'Group not found'},404,security);
+        if(group.created_by!==profileId)return json({error:'Creator permission required'},403,security);
+        if(input?.memberId===group.created_by)return json({error:'Creator cannot leave'},400,security);
+        await env.DB.prepare('DELETE FROM family_memberships WHERE group_id=? AND profile_id=?').bind(input.groupId,input.memberId).run();
+        return json({ok:true},200,security);
       }
       if(path==='/api/groups/join' && method==='POST'){
         const input=await body(request);
@@ -141,7 +179,7 @@ export default {
             if(Object.values(d.habits||{}).filter(Boolean).length>=3){points+=5;active++}
           }
           if(walks>=5)points+=20;
-          return {name:row.name,points,walks,activeDays:active,streak:streakFor(days)};
+          return {name:row.name,points,walks,activeDays:active,streak:streakFor(days),profileId:row.profile_id};
         }).sort((a,b)=>b.points-a.points);
         return json({weekStart:dates[0],leaderboard},200,security);
       }

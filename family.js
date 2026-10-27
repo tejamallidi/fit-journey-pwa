@@ -18,6 +18,7 @@
   const msg=s=>$('familyMessage').textContent=s;
 
   const streak=days=>{let d=new Date();d.setHours(12,0,0,0);let n=0;for(let i=0;i<366;i++){const key=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');const day=days[key];if(!day||!Object.values(day.habits||{}).some(Boolean)){if(i!==0)break}else n++;d.setDate(d.getDate()-1)}return n};
+  const styles=document.createElement('style');styles.textContent='.streakEntry{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px;margin:8px 0;border-radius:14px;background:#edf5f0}.streakFlame{font-weight:750;background:#fff1d7;color:#7c4800;border-radius:20px;padding:8px 12px;white-space:nowrap}';document.head.append(styles);
   const extra=document.createElement('div');extra.className='card';extra.hidden=true;
   extra.innerHTML='<h2>🔥 Personal streak</h2><p class="big" id="familyStreak">—</p><p class="muted">Log a daily habit to grow your streak.</p><h2>👤 Preferences</h2><label>Nickname <input id="familyNickname" maxlength="60"></label><p><label><input type="checkbox" id="familyMotivation"> Motivational messages</label></p><button id="familySavePrefs">Save preferences</button><p class="muted" id="familyPrefsMessage"></p>';
   $('settings').insertBefore(extra,card);
@@ -39,12 +40,23 @@
         const heading=document.createElement('strong');heading.textContent=group.name;
         const button=document.createElement('button');button.className='alt';button.textContent='Leaderboard';
         const scores=document.createElement('div');const shareButton=document.createElement('button');shareButton.className='alt';shareButton.textContent='Share invite';shareButton.onclick=async()=>{try{if(!confirm('Generate a new invitation? Previous invitation codes will no longer work.'))return;const r=await api('groups/invite?groupId='+encodeURIComponent(group.id),'POST');await share(r.inviteCode,group.name)}catch(e){msg(e.message)}};
+
+        const controls=document.createElement('div');controls.className='row';
+        if(group.created_by===state.profileId){
+          const rename=document.createElement('button');rename.className='alt';rename.textContent='Edit name';
+          rename.onclick=async()=>{const name=prompt('Group name',group.name);if(name===null)return;try{await api('groups/manage','PATCH',{groupId:group.id,name});msg('Group renamed');await render()}catch(e){msg(e.message)}};
+          const remove=document.createElement('button');remove.className='alt';remove.textContent='Delete group';
+          remove.onclick=async()=>{if(!confirm('Delete this group permanently? Member accounts and personal records will remain.'))return;try{await api('groups/manage','DELETE',{groupId:group.id});msg('Group deleted');await render()}catch(e){msg(e.message)}};
+          const members=document.createElement('button');members.className='alt';members.textContent='Manage members';
+          members.onclick=async()=>{try{const r=await api('groups/members?groupId='+encodeURIComponent(group.id));scores.replaceChildren();for(const m of r.members){const line=document.createElement('div');line.className='line';const name=document.createElement('span');name.textContent=m.name+(m.profile_id===r.creatorId?' (creator)':'');line.append(name);if(m.profile_id!==r.creatorId){const kick=document.createElement('button');kick.className='alt';kick.textContent='Remove';kick.onclick=async()=>{if(!confirm('Remove '+m.name+' from this group?'))return;try{await api('groups/members','DELETE',{groupId:group.id,memberId:m.profile_id});msg('Member removed');await members.onclick()}catch(e){msg(e.message)}};line.append(kick)}scores.append(line)}}catch(e){msg(e.message)}};
+          controls.append(rename,members,remove);
+        }
         button.onclick=async()=>{try{
           const result=await api('groups/leaderboard?groupId='+encodeURIComponent(group.id));
           scores.replaceChildren();
-          for(const entry of result.leaderboard){const p=document.createElement('p');p.textContent=entry.name+': '+entry.points+' points · '+entry.walks+' walks · 🔥 '+(entry.streak||0)+' days';scores.appendChild(p)}
+          for(const [rank,entry] of result.leaderboard.entries()){const p=document.createElement('div');p.className='streakEntry';const flame=document.createElement('span');flame.className='streakFlame';flame.textContent='🔥 '+(entry.streak||0);const detail=document.createElement('span');detail.textContent=(rank+1)+'. '+entry.name+' · '+entry.points+' pts · '+entry.walks+' walks';p.append(detail,flame);scores.appendChild(p)}
         }catch(e){msg(e.message)}};
-        section.append(heading,button,shareButton,scores);$('familyGroups').appendChild(section);
+        section.append(heading,button,shareButton,controls,scores);$('familyGroups').appendChild(section);
       }
     }catch{card.hidden=true;register.hidden=true}
   };

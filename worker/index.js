@@ -132,6 +132,15 @@ export default {
         ]);
         return json({ok:true},200,security);
       }
+      if(path==='/api/groups/members' && method==='GET'){
+        const groupId=url.searchParams.get('groupId');
+        const group=await env.DB.prepare('SELECT created_by FROM family_groups WHERE id=?').bind(groupId).first();
+        if(!group)return json({error:'Group not found'},404,security);
+        const member=await env.DB.prepare('SELECT 1 FROM family_memberships WHERE group_id=? AND profile_id=?').bind(groupId,profileId).first();
+        if(!member)return json({error:'Not a group member'},403,security);
+        const rows=await env.DB.prepare("SELECT m.profile_id,COALESCE(a.display_name,'Owner') AS name FROM family_memberships m LEFT JOIN family_accounts a ON a.id=m.profile_id WHERE m.group_id=?").bind(groupId).all();
+        return json({members:rows.results,creatorId:group.created_by},200,security);
+      }
       if(path==='/api/groups/join' && method==='POST'){
         const input=await body(request);
         if(typeof input?.inviteCode!=='string'||input.inviteCode.length<16)return json({error:'Invalid invitation'},400,security);

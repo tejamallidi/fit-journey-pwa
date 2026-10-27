@@ -121,6 +121,17 @@ export default {
         await env.DB.prepare('UPDATE family_groups SET name=? WHERE id=?').bind(input.name.trim(),input.groupId).run();
         return json({ok:true},200,security);
       }
+      if(path==='/api/groups/manage' && method==='DELETE'){
+        const input=await body(request);
+        const group=await env.DB.prepare('SELECT created_by FROM family_groups WHERE id=?').bind(input?.groupId).first();
+        if(!group)return json({error:'Group not found'},404,security);
+        if(group.created_by!==profileId)return json({error:'Only the group creator can delete'},403,security);
+        await env.DB.batch([
+          env.DB.prepare('DELETE FROM family_memberships WHERE group_id=?').bind(input.groupId),
+          env.DB.prepare('DELETE FROM family_groups WHERE id=?').bind(input.groupId)
+        ]);
+        return json({ok:true},200,security);
+      }
       if(path==='/api/groups/join' && method==='POST'){
         const input=await body(request);
         if(typeof input?.inviteCode!=='string'||input.inviteCode.length<16)return json({error:'Invalid invitation'},400,security);

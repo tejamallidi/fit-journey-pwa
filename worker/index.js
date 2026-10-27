@@ -99,7 +99,7 @@ export default {
       const profileId=await session(request,env);
       if(!profileId)return json({error:'Sign in required'},401,security);
       if(path==='/api/groups' && method==='GET'){
-        const groups=await env.DB.prepare('SELECT g.id,g.name FROM family_groups g JOIN family_memberships m ON m.group_id=g.id WHERE m.profile_id=? ORDER BY g.created_at DESC').bind(profileId).all();
+        const groups=await env.DB.prepare('SELECT g.id,g.name,g.created_by FROM family_groups g JOIN family_memberships m ON m.group_id=g.id WHERE m.profile_id=? ORDER BY g.created_at DESC').bind(profileId).all();
         return json({groups:groups.results},200,security);
       }
       if(path==='/api/groups' && method==='POST'){
@@ -111,6 +111,15 @@ export default {
           env.DB.prepare('INSERT INTO family_memberships (group_id,profile_id) VALUES (?,?)').bind(id,profileId)
         ]);
         return json({id,inviteCode:code},201,security);
+      }
+      if(path==='/api/groups/manage' && method==='PATCH'){
+        const input=await body(request);
+        const group=await env.DB.prepare('SELECT created_by FROM family_groups WHERE id=?').bind(input?.groupId).first();
+        if(!group)return json({error:'Group not found'},404,security);
+        if(group.created_by!==profileId)return json({error:'Only the group creator can edit'},403,security);
+        if(!displayValid(input?.name))return json({error:'Invalid group name'},400,security);
+        await env.DB.prepare('UPDATE family_groups SET name=? WHERE id=?').bind(input.name.trim(),input.groupId).run();
+        return json({ok:true},200,security);
       }
       if(path==='/api/groups/join' && method==='POST'){
         const input=await body(request);
@@ -141,7 +150,7 @@ export default {
             if(Object.values(d.habits||{}).filter(Boolean).length>=3){points+=5;active++}
           }
           if(walks>=5)points+=20;
-          return {name:row.name,points,walks,activeDays:active,streak:streakFor(days)};
+          return {name:row.name,points,walks,activeDays:active,streak:streakFor(days),profileId:row.profile_id};
         }).sort((a,b)=>b.points-a.points);
         return json({weekStart:dates[0],leaderboard},200,security);
       }

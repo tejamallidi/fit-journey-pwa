@@ -141,6 +141,15 @@ export default {
         const rows=await env.DB.prepare("SELECT m.profile_id,COALESCE(a.display_name,'Owner') AS name FROM family_memberships m LEFT JOIN family_accounts a ON a.id=m.profile_id WHERE m.group_id=?").bind(groupId).all();
         return json({members:rows.results,creatorId:group.created_by},200,security);
       }
+      if(path==='/api/groups/members' && method==='DELETE'){
+        const input=await body(request);
+        const group=await env.DB.prepare('SELECT created_by FROM family_groups WHERE id=?').bind(input?.groupId).first();
+        if(!group)return json({error:'Group not found'},404,security);
+        if(group.created_by!==profileId)return json({error:'Creator permission required'},403,security);
+        if(input?.memberId===group.created_by)return json({error:'Creator cannot leave'},400,security);
+        await env.DB.prepare('DELETE FROM family_memberships WHERE group_id=? AND profile_id=?').bind(input.groupId,input.memberId).run();
+        return json({ok:true},200,security);
+      }
       if(path==='/api/groups/join' && method==='POST'){
         const input=await body(request);
         if(typeof input?.inviteCode!=='string'||input.inviteCode.length<16)return json({error:'Invalid invitation'},400,security);

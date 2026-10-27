@@ -120,11 +120,11 @@ export default {
         await env.DB.prepare('INSERT OR IGNORE INTO family_memberships (group_id,profile_id) VALUES (?,?)').bind(group.id,profileId).run();
         return json({ok:true,groupId:group.id},200,security);
       }
-      if(path==='/api/groups/invite' && method==='GET'){
+      if(path==='/api/groups/invite' && method==='POST'){
         const groupId=url.searchParams.get('groupId');
         const member=await env.DB.prepare('SELECT 1 FROM family_memberships WHERE group_id=? AND profile_id=?').bind(groupId,profileId).first();
         if(!member)return json({error:'Not a group member'},403,security);
-        return json({error:'Existing invitation codes cannot be recovered. Create a new group to share a new code.'},409,security);
+        const inviteCode=random();await env.DB.prepare('UPDATE family_groups SET invite_code_hash=? WHERE id=?').bind(await tokenHash(inviteCode),groupId).run();return json({inviteCode},200,security);
       }
       if(path==='/api/groups/leaderboard' && method==='GET'){
         const groupId=url.searchParams.get('groupId');

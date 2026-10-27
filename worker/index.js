@@ -47,7 +47,7 @@ export default {
     if (path === '/api/health' && method === 'GET') return json({ ok: true, app: 'fit-journey' }, 200, security);
     if (method !== 'GET' && request.headers.get('origin') !== url.origin) return json({ error: 'Invalid origin' }, 403, security);
     try {
-      if (path === '/api/auth/status' && method === 'GET') { const profileId=await session(request,env); return json({initialized:Boolean(await account(env)),authenticated:Boolean(profileId),...(profileId?{profileId}:{})},200,security); }
+      if (path === '/api/auth/status' && method === 'GET') { const profileId=await session(request,env); const member=profileId&&profileId!=='owner'?await env.DB.prepare('SELECT email,display_name FROM family_accounts WHERE id=?').bind(profileId).first():null; return json({initialized:Boolean(await account(env)),authenticated:Boolean(profileId),...(profileId?{profileId,email:member?.email||null,displayName:member?.display_name||null}:{})},200,security); }
       if (path === '/api/auth/register' && method === 'POST') {
         const input=await body(request);
         if(!emailValid(input?.email)||!displayValid(input?.name)||typeof input.password!=='string'||input.password.length<12||input.password.length>128)return json({error:'Valid email, name and password of 12–128 characters required'},400,security);
@@ -72,6 +72,21 @@ export default {
         const salt = random(), hash = await derive(input.password, salt);
         const inserted = await env.DB.prepare('INSERT OR IGNORE INTO auth_users (id, salt, password_hash) VALUES (?, ?, ?)').bind('owner', salt, hash).run();
         return json({ created: inserted.meta.changes === 1 }, inserted.meta.changes === 1 ? 201 : 409, security);
+      }
+      if(path==='/api/auth/change-password' && method==='POST'){
+        const profileId=await session(request,env);
+        if(!profileId)return json({error:'Sign in required'},401,security);
+        const input=await body(request);
+        if(typeof input?.currentPassword!=='string'||typeof input?.newPassword!=='string'||input.newPassword.length<12||input.newPassword.length>128)return json({error:'Current password and new password (12–128 characters) required'},400,security);
+        const table=profileId==='owner'?'auth_users':'family_accounts';
+        const user=await env.DB.prepare('SELECT salt,password_hash FROM '+table+' WHERE id=?').bind(profileId).first();
+        if(!user||!compare(await derive(input.currentPassword,user.salt),user.password_hash))return json({error:'Current password is incorrect'},403,security);
+        const salt=random(),hash=await derive(input.newPassword,salt);
+        await env.DB.batch([
+          env.DB.prepare('UPDATE '+table+' SET salt=?,password_hash=? WHERE id=?').bind(salt,hash,profileId),
+          env.DB.prepare('INSERT INTO auth_session_versions(profile_id,version) VALUES (?,2) ON CONFLICT(profile_id) DO UPDATE SET version=version+1').bind(profileId)
+        ]);
+        return json({ok:true},200,{...security,'set-cookie':cookie('',0)});
       }
       if (path === '/api/auth/login' && method === 'POST') {
         const loginInput=await body(request);

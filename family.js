@@ -48,7 +48,7 @@
       }
     }catch{card.hidden=true;register.hidden=true}
   };
-  $('familyCreate').onclick=async()=>{try{const result=await api('groups','POST',{name:$('familyGroupName').value});await share(result.inviteCode,$('familyGroupName').value.trim());await render()}catch(e){msg(e.message)}};
+  $('familyCreate').onclick=async()=>{try{const result=await api('groups','POST',{name:$('familyGroupName').value});msg('Group created. Share the invitation with someone you trust.');await share(result.inviteCode,$('familyGroupName').value.trim());await render()}catch(e){msg(e.message)}};
   $('familyJoin').onclick=async()=>{try{await api('groups/join','POST',{inviteCode:$('familyJoinCode').value});msg('Joined!');await render()}catch(e){msg(e.message)}};
   $('familySignUp').onclick=async()=>{try{await api('auth/register','POST',{name:$('familyName').value,email:$('familyEmail').value,password:$('familyPassword').value,inviteCode:$('familyInvite').value});$('familyPassword').value='';$('cloudStatus').textContent='Account created. Sign in using your email and password.';await render()}catch(e){$('cloudStatus').textContent=e.message}};
   window.addEventListener('fitjourney:auth',render);

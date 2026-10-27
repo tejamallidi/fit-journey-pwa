@@ -38,7 +38,7 @@
         const section=document.createElement('div');section.className='line';
         const heading=document.createElement('strong');heading.textContent=group.name;
         const button=document.createElement('button');button.className='alt';button.textContent='Leaderboard';
-        const scores=document.createElement('div');const shareButton=document.createElement('button');shareButton.className='alt';shareButton.textContent='Share invite';shareButton.onclick=async()=>{try{const r=await api('groups/invite?groupId='+encodeURIComponent(group.id));await share(r.inviteCode,group.name)}catch(e){msg(e.message)}};
+        const scores=document.createElement('div');const shareButton=document.createElement('button');shareButton.className='alt';shareButton.textContent='Share invite';shareButton.onclick=async()=>{try{const r=await api('groups/invite?groupId='+encodeURIComponent(group.id),'POST');await share(r.inviteCode,group.name)}catch(e){msg(e.message)}};
         button.onclick=async()=>{try{
           const result=await api('groups/leaderboard?groupId='+encodeURIComponent(group.id));
           scores.replaceChildren();

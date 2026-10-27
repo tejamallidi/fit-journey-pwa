@@ -23,8 +23,8 @@
   $('settings').insertBefore(extra,card);
   let currentProfile='';
   $('familySavePrefs').onclick=()=>{localStorage.setItem('fitjourney.prefs.'+currentProfile,JSON.stringify({nickname:$('familyNickname').value.trim(),motivation:$('familyMotivation').checked}));$('familyPrefsMessage').textContent='Saved on this device'};
-  const share=async(code,name)=>{const url=new URL(location.href);url.searchParams.set('invite',code);url.hash='';const text='Join my '+name+' challenge on Fit Journey: '+url;try{if(navigator.share){await navigator.share({text});return}await navigator.clipboard.writeText(text);msg('Invite copied')}catch(e){if(e.name!=='AbortError')msg(text)}};
-  const incoming=new URL(location.href).searchParams.get('invite');if(incoming)$('familyInvite').value=incoming;
+  const share=async(code,name)=>{const url=new URL(location.origin+location.pathname);url.searchParams.set('invite',code);const text='Join my '+name+' challenge on Fit Journey: '+url;try{if(navigator.share){await navigator.share({text});return}await navigator.clipboard.writeText(text);msg('Invite copied')}catch(e){if(e.name!=='AbortError')msg(text)}};
+  const incoming=new URL(location.href).searchParams.get('invite');if(incoming){$('familyInvite').value=incoming;history.replaceState(null,'',location.pathname);}
   const render=async()=>{
     try{
       const state=await api('auth/status');
@@ -38,7 +38,7 @@
         const section=document.createElement('div');section.className='line';
         const heading=document.createElement('strong');heading.textContent=group.name;
         const button=document.createElement('button');button.className='alt';button.textContent='Leaderboard';
-        const scores=document.createElement('div');const shareButton=document.createElement('button');shareButton.className='alt';shareButton.textContent='Share invite';shareButton.onclick=async()=>{try{const r=await api('groups/invite?groupId='+encodeURIComponent(group.id),'POST');await share(r.inviteCode,group.name)}catch(e){msg(e.message)}};
+        const scores=document.createElement('div');const shareButton=document.createElement('button');shareButton.className='alt';shareButton.textContent='Share invite';shareButton.onclick=async()=>{try{if(!confirm('Generate a new invitation? Previous invitation codes will no longer work.'))return;const r=await api('groups/invite?groupId='+encodeURIComponent(group.id),'POST');await share(r.inviteCode,group.name)}catch(e){msg(e.message)}};
         button.onclick=async()=>{try{
           const result=await api('groups/leaderboard?groupId='+encodeURIComponent(group.id));
           scores.replaceChildren();

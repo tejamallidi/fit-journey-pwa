@@ -36,11 +36,11 @@
       $('cloudPanel').hidden = true;
     }
   }
-  $('cloudSignIn').onclick = async () => {
+  $('cloudLogin').onsubmit = async event => { event.preventDefault();
     try { await api('auth/login', 'POST', { email: $('cloudEmail')?.value.trim() || undefined, password: $('cloudPassword').value }); $('cloudPassword').value = ''; await refresh(); }
     catch (e) { message(e.message); }
   };
-  $('cloudCreate').onclick = async () => {
+  $('cloudSetup').onsubmit = async event => { event.preventDefault();
     try {
       const password = $('cloudNewPassword').value;
       if (password.length < 12) throw new Error('Use a password of at least 12 characters.');

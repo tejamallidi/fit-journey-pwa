@@ -120,12 +120,19 @@ export default {
         await env.DB.prepare('INSERT OR IGNORE INTO family_memberships (group_id,profile_id) VALUES (?,?)').bind(group.id,profileId).run();
         return json({ok:true,groupId:group.id},200,security);
       }
+      if(path==='/api/groups/invite' && method==='POST'){
+        const groupId=url.searchParams.get('groupId');
+        const member=await env.DB.prepare('SELECT 1 FROM family_memberships WHERE group_id=? AND profile_id=?').bind(groupId,profileId).first();
+        if(!member)return json({error:'Not a group member'},403,security);
+        const inviteCode=random();await env.DB.prepare('UPDATE family_groups SET invite_code_hash=? WHERE id=?').bind(await tokenHash(inviteCode),groupId).run();return json({inviteCode},200,security);
+      }
       if(path==='/api/groups/leaderboard' && method==='GET'){
         const groupId=url.searchParams.get('groupId');
         const member=await env.DB.prepare('SELECT 1 FROM family_memberships WHERE group_id=? AND profile_id=?').bind(groupId,profileId).first();
         if(!member)return json({error:'Not a group member'},403,security);
         const rows=await env.DB.prepare("SELECT m.profile_id, COALESCE(a.display_name, 'Owner') AS name, s.data_json FROM family_memberships m LEFT JOIN family_accounts a ON a.id=m.profile_id LEFT JOIN snapshots s ON s.profile_id=m.profile_id WHERE m.group_id=?").bind(groupId).all();
         const today=new Date();const weekday=(today.getUTCDay()+6)%7;const monday=new Date(Date.UTC(today.getUTCFullYear(),today.getUTCMonth(),today.getUTCDate()-weekday));const dates=Array.from({length:7},(_,i)=>new Date(monday.getTime()+i*86400000).toISOString().slice(0,10));
+        const streakFor=days=>{let date=new Date();date.setUTCHours(12,0,0,0);let count=0;for(let i=0;i<366;i++){const key=date.toISOString().slice(0,10),d=days[key];if(!d||!Object.values(d.habits||{}).some(Boolean)){if(i!==0)break}else count++;date.setUTCDate(date.getUTCDate()-1)}return count};
         const leaderboard=rows.results.map(row=>{let days={};try{days=JSON.parse(row.data_json||'{}').days||{}}catch{}
           let points=0,walks=0,active=0;
           for(const date of dates){if(date>today.toISOString().slice(0,10))continue;const d=days[date];if(!d)continue;
@@ -134,7 +141,7 @@ export default {
             if(Object.values(d.habits||{}).filter(Boolean).length>=3){points+=5;active++}
           }
           if(walks>=5)points+=20;
-          return {name:row.name,points,walks,activeDays:active};
+          return {name:row.name,points,walks,activeDays:active,streak:streakFor(days)};
         }).sort((a,b)=>b.points-a.points);
         return json({weekStart:dates[0],leaderboard},200,security);
       }
